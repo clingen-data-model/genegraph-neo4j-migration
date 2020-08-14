@@ -5,7 +5,7 @@
   (:import [org.neo4j.driver AuthTokens Driver GraphDatabase Result])
   (:gen-class))
 
-(def select-curations-query "match (d:Disease)<-[:has_object]-(a:GeneDiseaseAssertion)-[:has_subject]->(g:Gene), (moi:RDFClass)<-[:has_mode_of_inheritance]-(a)-[:has_predicate]->(score:RDFClass), (a)-[:wasAttributedto]->(gcep:Agent) where not a.gci_id is null return a.gci_id, g.iri, d.iri, score.iri, score.label, moi.iri, gcep.iri, a.score_string_gci, a.date, a.title, a.sopVersion limit 3")
+(def select-curations-query "match (d:Disease)<-[:has_object]-(a:GeneDiseaseAssertion)-[:has_subject]->(g:Gene), (moi:RDFClass)<-[:has_mode_of_inheritance]-(a)-[:has_predicate]->(score:RDFClass), (a)-[:wasAttributedto]->(gcep:Agent) where not a.gci_id is null and not (a)<-[:wasInvalidatedBy]-() return a.gci_id, g.iri, d.iri, score.iri, score.label, moi.iri, gcep.iri, a.score_string_gci, a.date, a.title, a.sopVersion")
 
 (def curation-keys {"a.gci_id" :id
                     "g.iri" :gene
@@ -29,9 +29,9 @@
 
 
 (defn write-curation [path content]
-  (with-open [w (io/writer (str path "/" (:id content)))]
+  (with-open [w (io/writer (str path "/" (:genegraph.sink.event/key content) ".edn"))]
     (binding [*out* w]
-      (pprint content))))
+      (pr content))))
 
 (defn -main
   "I don't do a whole lot ... yet."
@@ -42,6 +42,9 @@
                           iterator-seq
                           (map #(.asMap %))
                           (map #(into {} %))
-                          (map #(set/rename-keys % curation-keys)))]
+                          (map #(set/rename-keys % curation-keys))
+                          (map #(hash-map :genegraph.annotate/format :gene-validity-neo4j-export
+                                          :genegraph.sink.event/key (:id %)
+                                          :genegraph.sink.event/value %)))]
       (doseq [c curations]
         (write-curation "data" c)))))
